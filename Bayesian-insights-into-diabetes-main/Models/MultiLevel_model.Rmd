@@ -1,0 +1,134 @@
+```{r}
+library(rstan)
+library(brms)
+library(rstudioapi)
+library(bayesplot)
+library(posterior)
+library(rstanarm)
+library(ggplot2)
+library(coda)
+library(shinystan)
+library(varhandle)
+library(xgboost)
+library(bayestestR)
+```
+```{r}
+# Read the data
+baseData <- read.csv("E:/ABDA_Report/ADBDA_CODES/diabetes_binary_5050split_health_indicators_BRFSS2021.csv")
+##imported Data
+```
+
+```{r}
+d<-baseData
+d$Diabetes_binary<-factor(d$Diabetes_binary)
+d$HighBP<-factor(d$HighBP)
+d$HighChol<-factor(d$HighChol)
+d$CholCheck<-factor(d$CholCheck)
+d$Smoker<-factor(d$Smoker)
+d$Stroke<-factor(d$Stroke)
+d$HeartDiseaseorAttack<-factor(d$HeartDiseaseorAttack)
+d$PhysActivity<-factor(d$PhysActivity)
+d$Fruits<-factor(d$Fruits)
+d$Veggies<-factor(d$Veggies)
+d$HvyAlcoholConsump<-factor(d$HvyAlcoholConsump)
+d$AnyHealthcare<-factor(d$AnyHealthcare)
+d$NoDocbcCost<-factor(d$NoDocbcCost)
+d$DiffWalk<-factor(d$DiffWalk)
+d$Sex<-factor(d$Sex)
+
+baseData <- d
+scaledData <- baseData
+```
+
+```{r}
+
+set.seed(412124)
+testIDs <- sample(1:70692, 21000)
+trainIDs <- (1:70692)[-testIDs]
+testPredY <- baseData[testIDs,1] 
+
+for(i in 2:22){
+  if(is.null(levels(scaledData[,i]))){
+    scaledData[,i] <- scale(baseData[,i])
+  }
+}
+```
+
+```{r}
+set.seed(21341)
+sampleIDs <- c(sample(trainIDs[which(baseData[trainIDs,1]==1)],1500),
+               sample(trainIDs[which(baseData[trainIDs,1]==0)],1500))
+```
+
+
+```{r}
+#Normal Logit Multi Model
+brm_MultiLogit <- brm(Diabetes_binary ~ CholCheck + HighBP + HighChol
+                      + Stroke + HeartDiseaseorAttack
+                      + HvyAlcoholConsump + AnyHealthcare + BMI + Age
+                      + Sex + Education + BMI*Age + (1|GenHlth),
+                      data = scaledData[sampleIDs,],
+                      family = bernoulli("logit"), iter = 3000, init = 0,
+                      prior = c(prior(normal(0,1),class="b")))
+brm_MultiLogit
+launch_shinystan(brm_MultiLogit)
+min(effective_sample(brm_MultiLogit)[,2])
+max(summary(brm_MultiLogit)$fixed$Rhat)
+
+```
+
+
+```{r}
+# Load necessary libraries
+library(brms)
+library(caret)
+
+# Generate posterior predictions
+posterior_predictions <- posterior_epred(brm_MultiLogit, newdata = scaledData[sampleIDs, ])
+# posterior_predictions <- posterior_epred(brm_LogistBal, newdata = scaledData[sampleIDs, ])
+# posterior_predictions <- posterior_epred(brm_CauchBal, newdata = scaledData[sampleIDs, ])
+
+# Take the mean of posterior samples for each observation
+predicted_probs <- colMeans(posterior_predictions)  # Now length = 3000
+
+# Convert probabilities to binary class (threshold 0.5)
+predicted_classes <- ifelse(predicted_probs >= 0.5, 1, 0)
+
+# Extract true labels
+true_labels <- scaledData$Diabetes_binary[sampleIDs]
+
+# Debugging check
+cat("Length of True Labels:", length(true_labels), "\n")
+cat("Length of Predicted Labels:", length(predicted_classes), "\n")
+
+# Ensure both are factors
+true_labels <- as.factor(true_labels)
+predicted_classes <- as.factor(predicted_classes)
+
+# Compute confusion matrix
+conf_matrix <- confusionMatrix(predicted_classes, true_labels)
+
+# Print confusion matrix
+print(conf_matrix)
+
+# Compute performance metrics
+accuracy <- conf_matrix$overall["Accuracy"]
+precision <- conf_matrix$byClass["Pos Pred Value"]
+recall <- conf_matrix$byClass["Sensitivity"]
+f1_score <- 2 * (precision * recall) / (precision + recall)
+
+cat("Accuracy:", accuracy, "\n")
+cat("Precision:", precision, "\n")
+cat("Recall:", recall, "\n")
+cat("F1-score:", f1_score, "\n")
+
+# Compute WAIC for model evaluation
+waic_result <- waic(brm_MultiLogit)
+
+# Print WAIC score
+print(waic_result)
+
+
+```
+
+

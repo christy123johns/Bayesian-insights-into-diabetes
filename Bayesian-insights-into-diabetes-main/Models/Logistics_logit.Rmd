@@ -1,0 +1,84 @@
+```{r}
+library(rstan)
+library(brms)
+library(rstudioapi)
+library(bayesplot)
+library(posterior)
+library(rstanarm)
+library(ggplot2)
+library(coda)
+library(shinystan)
+library(varhandle)
+library(xgboost)
+library(bayestestR)
+```
+
+```{r}
+# Read the data
+baseData <- read.csv("E://ABDA_Report//ADBDA_CODES//diabetes_binary_5050split_health_indicators_BRFSS2021.csv")
+##imported Data
+```
+
+
+```{r}
+d<-baseData
+d$Diabetes_binary<-factor(d$Diabetes_binary)
+d$HighBP<-factor(d$HighBP)
+d$HighChol<-factor(d$HighChol)
+d$CholCheck<-factor(d$CholCheck)
+d$Smoker<-factor(d$Smoker)
+d$Stroke<-factor(d$Stroke)
+d$HeartDiseaseorAttack<-factor(d$HeartDiseaseorAttack)
+d$PhysActivity<-factor(d$PhysActivity)
+d$Fruits<-factor(d$Fruits)
+d$Veggies<-factor(d$Veggies)
+d$HvyAlcoholConsump<-factor(d$HvyAlcoholConsump)
+d$AnyHealthcare<-factor(d$AnyHealthcare)
+d$NoDocbcCost<-factor(d$NoDocbcCost)
+d$DiffWalk<-factor(d$DiffWalk)
+d$Sex<-factor(d$Sex)
+
+baseData <- d
+scaledData <- baseData
+```
+
+```{r}
+
+set.seed(412124)
+testIDs <- sample(1:70692, 21000)
+trainIDs <- (1:70692)[-testIDs]
+testPredY <- baseData[testIDs,1] 
+
+for(i in 2:22){
+  if(is.null(levels(scaledData[,i]))){
+    scaledData[,i] <- scale(baseData[,i])
+  }
+}
+```
+
+
+```{r}
+set.seed(21341)
+sampleIDs <- c(sample(trainIDs[which(baseData[trainIDs,1]==1)],1500),
+               sample(trainIDs[which(baseData[trainIDs,1]==0)],1500))
+```
+
+
+##Logistic Logit Model
+
+```{r}
+
+brm_LogistBal <- brm(Diabetes_binary ~ HighBP + HighChol + CholCheck + BMI + Smoker
+                     + Stroke + HeartDiseaseorAttack + PhysActivity + Fruits + Veggies
+                     + HvyAlcoholConsump + AnyHealthcare + NoDocbcCost + GenHlth
+                     + MentHlth + PhysHlth + DiffWalk + Sex + Age + Education
+                     + Income,
+                     data = scaledData[sampleIDs,],
+                     family = bernoulli("logit"), iter = 3000, init = 0,
+                     prior = c(prior(logistic(0,3),class="b")))
+brm_LogistBal
+launch_shinystan(brm_LogistBal)
+min(effective_sample(brm_LogistBal)[,2])
+```
+
+
